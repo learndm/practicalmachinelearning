@@ -1,0 +1,208 @@
+---
+title: "Practical Machine Learning Project Corsera"
+output: html_document
+---
+
+**Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+**Data**
+
+The **training data** for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The **test data** are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+**What you should submit**
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details.
+
+
+**Clear your workspace **
+
+```{r}
+# first clear your workspace
+
+rm(list = ls())
+
+```
+
+**Set the working directory **
+```{r}
+# set the working directory 
+
+setwd("~/Desktop/PRACTICAL_MACHINE_LEARNING_PROJECT")
+```
+
+**Set seed**
+```{r}
+# set seed before start your machine learning model building
+
+set.seed(1000)
+```
+
+**Download trainig Data**
+
+```{r}
+# download training data set
+
+training_data_url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+destination_file_training <- 'pml-training.csv'
+
+download.file(training_data_url, destination_file_training, method="curl", quiet = TRUE)
+
+if (file.exists(destination_file_training)){
+    cat("Training data set is available")
+} else {
+   stop("Training data set is not available, please check the Download !!")
+}
+```
+
+**Download testing Data**
+
+```{r}
+# download test data set 
+
+test_data_url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+
+destination_file_testing <- 'pml-testing.csv'
+
+download.file(test_data_url , destination_file_testing, method="curl", quiet = TRUE)
+
+if (file.exists(destination_file_testing)){
+    cat("Testing data set is available")
+} else {
+   stop("Testing data set is not available, please check the Download !!")
+}
+```
+
+**Load caret package**
+```{r}
+# load caret package
+
+library(caret)
+```
+
+**Load training data**
+```{r}
+# load training raw data
+
+training_raw_data <- read.csv(file="pml-training.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+```
+
+**Load testing data**
+
+```{r}
+# load testing raw data
+
+testing_raw_data <- read.csv(file="pml-testing.csv", header=TRUE, as.is = TRUE, stringsAsFactors = FALSE, sep=',', na.strings=c('NA','','#DIV/0!'))
+```
+
+**read Class as factor**
+
+```{r}
+# read class as factor
+training_raw_data$classe <- as.factor(training_raw_data$classe) 
+```
+
+**Data exploration summary**
+```{r}
+# inspect the traing data to identify NA and useless variables for the purpose of the prediction
+#summary(training_raw_data)
+```
+
+**Data exploration head**
+```{r}
+#head(training_raw_data)
+```
+
+**Data cleaning on training data set**
+```{r}
+# data cleaning on training data set
+
+NAidx <- apply(training_raw_data,2,function(x) {sum(is.na(x))}) 
+training_raw_data <- training_raw_data[,which(NAidx == 0)]
+```
+
+**Data cleaning on testing data set**
+
+```{r}
+# data cleaning on testing data set
+
+NAidx <- apply(testing_raw_data,2,function(x) {sum(is.na(x))}) 
+testing_raw_data<- testing_raw_data[,which(NAidx == 0)]
+```
+
+**Preprocessing of predictors**
+```{r}
+# preprocessing of Predictors 
+
+vidx <- which(lapply(training_raw_data, class) %in% "numeric")
+
+preProcessData <-preProcess(training_raw_data[,vidx],method=c('knnImpute', 'center', 'scale'))
+trainModel <- predict(preProcessData, training_raw_data[,vidx])
+trainModel$classe <- training_raw_data$classe
+
+testModel <-predict(preProcessData ,testing_raw_data[,vidx])
+```
+
+**Clean near zero values**
+```{r}
+# remove near zero values, if any
+nzv <- nearZeroVar(trainModel,saveMetrics=TRUE)
+trainModel<- trainModel[,nzv$nzv==FALSE]
+
+nzv <- nearZeroVar(testModel,saveMetrics=TRUE)
+testModel <- testModel[,nzv$nzv==FALSE]
+```
+
+**Data partition** 
+```{r}
+# create a data partition for cross validation
+
+inTrain = createDataPartition(trainModel$classe, p = 3/4, list=FALSE)
+training = trainModel[inTrain,]
+crossValidation = trainModel[-inTrain,]
+```
+
+**Train the model using Random Forest**
+```{r}
+# Train the model using Random Forest method because of its accuracy
+
+modelFit <- train(classe ~., method="rf", data=training, trControl=trainControl(method='cv'), number=5, allowParallel=TRUE )
+```
+
+**Model accuracy (training)**
+```{r}
+# Check the model's accuracy on training set 
+
+trainingPrediction <- predict(modelFit, training)
+confusionMatrix(trainingPrediction, training$classe)
+```
+
+**Model accuracy (training)**
+```{r}
+# Check the model's accuracy (Cross Validation)
+
+crossValidationPrediction <- predict(modelFit, crossValidation)
+confusionMatrix(crossValidationPrediction, crossValidation$classe)
+```
+
+**Model prediction (training)**
+```{r}
+# Final result on testing data
+testingPrediction <- predict(modelFit, testModel)
+testingPrediction
+```
+
+
+
